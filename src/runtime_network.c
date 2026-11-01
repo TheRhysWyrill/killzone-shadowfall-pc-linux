@@ -410,7 +410,11 @@ static ABI int32_t private_poll_abort(int id,int flags) {
 static ABI int32_t private_poll_destroy(int id) {
     if(!private_enabled())return sce_fail(13);
     pthread_mutex_lock(&udp_lock);UdpPoll *p=poll_locked(id);
-    if(p)memset(p,0,sizeof *p);pthread_mutex_unlock(&udp_lock);return p?0:sce_fail(9);
+    if(p) {
+        memset(p,0,sizeof *p);
+    }
+    pthread_mutex_unlock(&udp_lock);
+    return p?0:sce_fail(9);
 }
 uintptr_t runtime_network_resolve(const char *name) {
     const char *enabled=getenv("KZSF_PROBE_UDP");

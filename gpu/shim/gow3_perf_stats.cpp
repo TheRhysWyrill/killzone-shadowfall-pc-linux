@@ -5,13 +5,13 @@
 #include <mutex>
 #include <thread>
 #include <vector>
+#include "gow3_process_memory.h"
 #include "video_core/renderer_vulkan/vk_instance.h"
 
 #ifdef _WIN32
 #include <windows.h>
 #include <pdh.h>
 #include <pdhmsg.h>
-#include <psapi.h>
 #endif
 
 namespace Gow3PerfStats {
@@ -97,13 +97,13 @@ void Run(const Vulkan::Instance* instance) {
             last_process = process;
             last_wall = wall;
         }
-        PROCESS_MEMORY_COUNTERS memory{};
-        if (K32GetProcessMemoryInfo(GetCurrentProcess(), &memory, sizeof(memory))) {
-            s.ram_used_gb = double(memory.WorkingSetSize) / GiB;
+        const std::uint64_t ram_used = Gow3ProcessMemory::CurrentRssBytes();
+        if (ram_used) {
+            s.ram_used_gb = double(ram_used) / GiB;
         }
-        MEMORYSTATUSEX system{.dwLength = sizeof(MEMORYSTATUSEX)};
-        if (GlobalMemoryStatusEx(&system)) {
-            s.ram_total_gb = double(system.ullTotalPhys) / GiB;
+        const std::uint64_t ram_total = Gow3ProcessMemory::TotalRamBytes();
+        if (ram_total) {
+            s.ram_total_gb = double(ram_total) / GiB;
         }
         if (instance->CanReportMemoryUsage()) {
             s.vram_used_gb = double(instance->GetDeviceMemoryUsage()) / GiB;
@@ -119,9 +119,22 @@ void Run(const Vulkan::Instance* instance) {
 }
 #else
 void Run(const Vulkan::Instance* instance) {
+    constexpr double GiB = 1024.0 * 1024.0 * 1024.0;
     while (true) {
         Sample s;
         s.gpu_name = std::string(instance->GetModelName());
+        const std::uint64_t ram_used = Gow3ProcessMemory::CurrentRssBytes();
+        if (ram_used) {
+            s.ram_used_gb = double(ram_used) / GiB;
+        }
+        const std::uint64_t ram_total = Gow3ProcessMemory::TotalRamBytes();
+        if (ram_total) {
+            s.ram_total_gb = double(ram_total) / GiB;
+        }
+        if (instance->CanReportMemoryUsage()) {
+            s.vram_used_gb = double(instance->GetDeviceMemoryUsage()) / GiB;
+            s.vram_total_gb = double(instance->GetDeviceMemoryBudgetNow()) / GiB;
+        }
         {
             std::scoped_lock lock{mutex};
             latest = std::move(s);

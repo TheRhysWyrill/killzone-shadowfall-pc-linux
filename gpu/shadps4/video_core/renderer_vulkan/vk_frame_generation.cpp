@@ -402,7 +402,7 @@ vk::ImageView FrameGenerator::Hudless(vk::Format format, vk::Extent2D& size) {
         return {};
     }
     Slot& slot = slots[selected];
-    size = {slot.hudless_width, slot.hudless_height};
+    size = vk::Extent2D{slot.hudless_width, slot.hudless_height};
     for (const auto& view : slot.hudless_views) {
         if (view.format == format) {
             return *view.view;

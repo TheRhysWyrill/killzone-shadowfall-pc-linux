@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# AppImage entry point: opens the native Killzone Shadow Fall launcher.
+#
+# Data (launcher.json, settings.ini, prepared files, saves, logs, mods and FSR 4 shaders) lives
+# beside the AppImage when that folder is writable, otherwise in ~/.local/share/killzone-shadowfall.
+# KZSF_DATA_DIR or KZSF_USER_DIR overrides the folder; KZSF_PORTABLE=1 forces the folder beside
+# the AppImage, also when the marker files are absent.
+set -euo pipefail
+here=$(dirname -- "$(readlink -f -- "$0")")
+share=$here/usr/share/killzone-shadowfall
+launcher="$share/Killzone Shadow Fall"
+
+export LD_LIBRARY_PATH="$here/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+portable=${KZSF_PORTABLE:-0}
+base=''
+if [[ -n ${APPIMAGE:-} ]]; then
+    base=$(dirname -- "$(readlink -f -- "$APPIMAGE")")
+fi
+
+if [[ -n ${KZSF_USER_DIR:-} ]]; then
+    data=$KZSF_USER_DIR
+elif [[ -n ${KZSF_DATA_DIR:-} ]]; then
+    data=$KZSF_DATA_DIR
+else
+    beside=0
+    if [[ -n $base && $base != / ]]; then
+        if [[ $portable == 1 || -e $base/portable || -e $base/portable.txt ]]; then
+            beside=1
+        elif [[ -d $base/data && -w $base/data ]]; then
+            beside=1
+        elif [[ ! -e $base/data && -w $base ]]; then
+            beside=1
+        fi
+    elif [[ $portable == 1 ]]; then
+        beside=1
+        base=$here
+    fi
+    if [[ $beside == 1 ]]; then
+        data=$base/data
+    else
+        data=${XDG_DATA_HOME:-$HOME/.local/share}/killzone-shadowfall
+    fi
+fi
+
+mkdir -p -- "$data"
+data=$(cd -- "$data" && pwd)
+export KZSF_USER_DIR=$data
+export KZSF_DATA_DIR=$data
+export GOW3_DATA_DIR=$data
+# The game window and this launcher use the desktop entry's application id.
+export SDL_APP_ID=killzone-shadowfall
+
+# FSR 4: the optimized passes built into the AppImage are copied once to the writable data folder.
+# The launcher downloads the rest of the model there (kzsf_fsr4.py); the game reads GOW3_FSR4_DIR.
+if [[ -d $share/fsr4_shaders/opt && ! -e $data/fsr4_shaders/opt ]]; then
+    mkdir -p -- "$data/fsr4_shaders"
+    cp -a -- "$share/fsr4_shaders/opt" "$data/fsr4_shaders/" 2>/dev/null || true
+    if [[ -f $share/fsr4_shaders/LICENSE-FSR4-v07.txt ]]; then
+        cp -f -- "$share/fsr4_shaders/LICENSE-FSR4-v07.txt" "$data/fsr4_shaders/" 2>/dev/null || true
+    fi
+fi
+
+if [[ ! -x $launcher ]]; then
+    echo "Killzone Shadow Fall launcher missing from this AppImage: $launcher" >&2
+    exit 1
+fi
+
+cd -- "$share"
+exec "$launcher" "$@"

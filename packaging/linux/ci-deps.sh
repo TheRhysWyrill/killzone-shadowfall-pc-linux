@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build dependencies of the release AppImage on Ubuntu 24.04 (.github/workflows/linux-appimage.yml).
+# Build dependencies of the release AppImages on Ubuntu 24.04 (.github/workflows/linux-appimage.yml
+# for GOW3, .github/workflows/kzsf-linux-appimage.yml for Killzone Shadow Fall).
 # Its glibc (2.39) is the oldest one players can have: SteamOS, Bazzite/Fedora, Debian 13 and
 # Ubuntu 24.04 or newer. A build on a rolling distro needs the host's glibc instead (#291).
 # What 24.04 lacks or ships too old is built into /usr/local: Vulkan-Headers, VMA, SDL3.
@@ -9,8 +10,8 @@ export DEBIAN_FRONTEND=noninteractive
 $sudo apt-get update
 $sudo apt-get install -y --no-install-recommends \
     build-essential g++-14 gcc-14 cmake ninja-build pkg-config git curl ca-certificates file patchelf binutils \
-    libvulkan-dev glslang-tools libboost-dev libfmt-dev libxxhash-dev libzydis-dev robin-map-dev \
-    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev \
+    libvulkan-dev glslang-tools spirv-cross libboost-dev libfmt-dev libxxhash-dev libzydis-dev robin-map-dev \
+    libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libpng-dev \
     libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libxfixes-dev \
     libxinerama-dev libxkbcommon-dev libwayland-dev wayland-protocols libdecor-0-dev libdrm-dev libgbm-dev \
     libegl-dev libasound2-dev libpulse-dev libpipewire-0.3-dev libudev-dev libdbus-1-dev libibus-1.0-dev \
@@ -39,7 +40,7 @@ ninja -C "$work/sdl" >/dev/null
 $sudo ninja -C "$work/sdl" install >/dev/null
 $sudo ldconfig
 
-# The launcher is frozen with PyInstaller (packaging/linux/build.sh): venv at $VENV.
+# The launchers are frozen with PyInstaller (packaging/linux/build.sh and build-kzsf.sh): venv at $VENV.
 VENV=${VENV:-$PWD/out/venv}
 python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q --no-cache-dir pyinstaller pillow iced-x86==1.21.0

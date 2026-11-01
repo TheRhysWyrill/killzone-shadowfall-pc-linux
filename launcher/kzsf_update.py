@@ -2,15 +2,18 @@
 """Update check and install for the Killzone Shadow Fall launcher.
 
 The newest GitHub release (pre-releases included: the betas are published as such) is compared
-with the launcher's VERSION. Installing downloads the release zip into user/update/, unpacks it,
-and hands over to a small .cmd script that waits for the launcher to exit, copies the new files
-over the port folder (user/ is never touched: saves, settings, caches and logs stay), and starts
-the launcher again.
+with the launcher's VERSION. On Windows, installing downloads the release zip into user/update/,
+unpacks it, and hands over to a small .cmd script that waits for the launcher to exit, copies the
+new files over the port folder (user/ is never touched: saves, settings, caches and logs stay),
+and starts the launcher again. On Linux, it downloads the release AppImage and a small shell script
+replaces the running AppImage once the launcher has exited.
 """
 import json
 import re
+import shlex
 import shutil
 import subprocess
+import sys
 import urllib.request
 import zipfile
 from pathlib import Path
@@ -18,7 +21,8 @@ from pathlib import Path
 REPO = 'lesca-191204/killzone-shadowfall-pc'
 RELEASES_API = f'https://api.github.com/repos/{REPO}/releases?per_page=10'
 RELEASES_PAGE = f'https://github.com/{REPO}/releases'
-ASSET = re.compile(r'^KillzoneShadowFall-v[\d.]+-windows\.zip$')
+WINDOWS = sys.platform == 'win32'
+ASSET = re.compile(r'^KillzoneShadowFall-v[\d.]+-(?:windows\.zip|x86_64\.AppImage)$')
 USER_AGENT = 'KillzoneShadowFall-launcher'
 SYSTEM32 = r'%SystemRoot%\System32'
 
@@ -30,13 +34,16 @@ def parse_version(text):
 
 
 def newest_release(releases):
-    """The highest-versioned published release that has a Windows zip, or None."""
+    """The highest-versioned published release with this platform's asset, or None."""
     best = None
     for release in releases:
         version = parse_version(release.get('tag_name', ''))
         if release.get('draft') or version is None:
             continue
-        asset = next((a for a in release.get('assets', []) if ASSET.match(a.get('name', ''))), None)
+        assets = release.get('assets', [])
+        asset = next((a for a in assets if ASSET.match(a.get('name', ''))
+                      and (a['name'].endswith('-windows.zip') if WINDOWS
+                           else a['name'].endswith('-x86_64.AppImage'))), None)
         if asset is None:
             continue
         if best is None or version > best['version_tuple']:
@@ -128,6 +135,44 @@ def install_script(source, port_dir, launcher_pid, launcher_exe, work_dir, clean
     return script
 
 
+def install_script_linux(appimage, launcher_pid, work_dir, cleanup=()):
+    """Writes the shell script that replaces `appimage` once the launcher (PID) has exited.
+
+    The new AppImage is copied beside the old one first, so a failed download or a read-only
+    folder leaves the working AppImage untouched. `cleanup` (the downloaded file) is removed
+    afterwards."""
+    work_dir = Path(work_dir).resolve()
+    work_dir.mkdir(parents=True, exist_ok=True)
+    script = work_dir / 'apply_update.sh'
+    log = work_dir / 'apply_update.log'
+    failed = work_dir / 'apply_update_failed.txt'
+    target = Path(appimage).expanduser().resolve()
+    new = target.with_name(target.name + '.new')
+    quote = shlex.quote
+    lines = [
+        '#!/bin/sh',
+        'set -u',
+        f'while kill -0 {launcher_pid} 2>/dev/null; do sleep 1; done',
+        f'rm -f {quote(str(failed))} {quote(str(log))}',
+        f'exec >> {quote(str(log))} 2>&1',
+        f'if ! cp {quote(str(target))} {quote(str(new))}; then',
+        f'    echo {quote(f"Could not write {new}")} > {quote(str(failed))}',
+        '    exit 1',
+        'fi',
+        f'chmod 755 {quote(str(new))}',
+        f'if ! mv -f {quote(str(new))} {quote(str(target))}; then',
+        f'    echo {quote(f"Could not replace {target}")} > {quote(str(failed))}',
+        '    exit 1',
+        'fi',
+    ]
+    for path in cleanup:
+        lines.append(f'rm -rf {quote(str(Path(path).expanduser().resolve()))}')
+    lines.append(f'exec {quote(str(target))}')
+    script.write_text('\n'.join(lines) + '\n', encoding='utf-8', newline='\n')
+    script.chmod(0o755)
+    return script
+
+
 def failed_update(work_dir):
     """True when the last update script could not copy the files."""
     return (Path(work_dir) / 'apply_update_failed.txt').is_file()
@@ -137,6 +182,10 @@ def run_script(script):
     """Starts the update script on its own, without a console window. It leaves the launcher's job
     when allowed: a job that kills its processes when the launcher closes (some shortcuts and game
     launchers start it in one) took the script along before it copied anything (#87)."""
+    if not WINDOWS:
+        return subprocess.Popen(['/bin/sh', str(script)], cwd=str(Path(script).parent),
+                                start_new_session=True, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
     flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0) | getattr(subprocess, 'CREATE_NEW_PROCESS_GROUP', 0)
     breakaway = getattr(subprocess, 'CREATE_BREAKAWAY_FROM_JOB', 0x01000000)
     for extra in (breakaway, 0):

@@ -114,7 +114,7 @@ static inline int gow3_prompt_pad_art(uint32_t *pixels,unsigned width,const int3
     unsigned n=0;
     /* The shape: 0 circle, 1 bumper, 2 trigger, 3 d-pad. */
     int shape=0,lit=-1;
-    float hx=size*0.5f,hy=size*0.5f,radius[4];
+    float hx=size*0.5f,hy=size*0.5f,radius[4]={0,0,0,0};
     if(!strcmp(label,"A") || !strcmp(label,"B") || !strcmp(label,"X") || !strcmp(label,"Y")) {
         n=gow3_prompt_text(seg,n,label,cx,cy,size*0.46f);
     } else if(!strcmp(label,"LS") || !strcmp(label,"RS")) {

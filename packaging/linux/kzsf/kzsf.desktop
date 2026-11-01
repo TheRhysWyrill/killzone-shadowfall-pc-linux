@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Killzone Shadow Fall
+Comment=Native Linux port of Killzone Shadow Fall (bring your own game dump)
+Exec=AppRun
+Icon=killzone-shadowfall
+Categories=Game;
+Terminal=false
+StartupWMClass=Killzone Shadow Fall
+X-AppImage-Name=Killzone Shadow Fall

@@ -1,10 +1,14 @@
+# LEGACY BASE PROJECT: this builds the God of War III Remastered base project (packaging/linux/
+# build.sh and gow3_launcher_win.py), NOT Killzone Shadow Fall. For this port use
+# .github/workflows/kzsf-linux-appimage.yml, which builds the Killzone launcher and AppImage.
+#
 # Linux AppImage: built on Ubuntu 24.04 so it starts on glibc 2.39 or newer (SteamOS, Bazzite/Fedora,
 # Debian 13, Ubuntu 24.04+; #291), then opened on those distros before it is published. Run by hand
 # (Actions > Linux AppImage > Run workflow), on the branch to build:
 #   - no tag: build and test only (the AppImage is kept as a workflow artifact).
 #   - tag of an existing release (e.g. windows-v2.2.0): the AppImage replaces the one attached to it.
 #   - new tag (e.g. linux-v2.2.1-test1): test build, published as a pre-release on that commit.
-name: Linux AppImage
+name: God of War III (base project) Linux AppImage
 
 on:
   workflow_dispatch:

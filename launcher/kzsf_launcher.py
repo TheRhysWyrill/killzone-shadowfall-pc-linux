@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-or-later
-"""Killzone Shadow Fall (PC port) launcher for Windows (Tkinter).
+"""Killzone Shadow Fall (PC port) launcher for Windows and Linux (Tkinter).
 
 One window: the game folder (CUSA00190, version 01.81, from the player's own dump), basic
 graphics options (settings.ini, shared with the in-game menu), keyboard and controller mapping
@@ -13,8 +13,9 @@ Everything the port writes lives in user/ beside the launcher:
   user/ps4/            the console's user folder: savedata, screenshots, shader cache
   user/logs/<time>/    one folder per game start
 
-Frozen with PyInstaller (packaging/windows/package_kzsf.sh), the same executable also runs
-run.py (`--run`) and the preparation scripts (`--script`), so players need no Python.
+Frozen with PyInstaller (packaging/windows/package_kzsf.sh and packaging/linux/build-kzsf.sh),
+the same executable also runs run.py (`--run`) and the preparation scripts (`--script`), so players
+need no Python.
 The artwork (banner, icon) comes from the player's game folder: nothing of the game ships.
 """
 import json
@@ -33,6 +34,7 @@ import kzsf_fsr4
 import kzsf_update
 
 WINDOWS = sys.platform == 'win32'
+LINUX = sys.platform.startswith('linux')
 if WINDOWS:
     import ctypes
     # AMD hybrid laptops: this layer hides the discrete GPU from Vulkan and the game stays black.
@@ -48,14 +50,21 @@ TITLE_ID = 'CUSA00190'
 OTHER_TITLE_IDS = {'CUSA00191': 'LATAM', 'CUSA00002': 'Europe', 'CUSA00085': 'Japan'}
 TITLE_IDS = {TITLE_ID, *OTHER_TITLE_IDS}
 GAME_VERSION = '01.81'
-USER_DIR = Path(os.environ.get('KZSF_USER_DIR', PORT_DIR / 'user'))
+_DATA_HOME = Path(os.environ.get('XDG_DATA_HOME') or Path.home() / '.local/share') / 'killzone-shadowfall'
+# The Windows package is a writable folder; the Linux AppImage is a read-only mount, so its data
+# lives beside the AppImage (KZSF_PORTABLE=1) or in the XDG data folder when no KZSF_USER_DIR is set.
+_default_user = PORT_DIR / 'user'
+if LINUX and not os.access(PORT_DIR, os.W_OK):
+    _default_user = _DATA_HOME
+USER_DIR = Path(os.environ.get('KZSF_USER_DIR') or os.environ.get('KZSF_DATA_DIR') or _default_user)
 LAUNCHER_FILE = USER_DIR / 'launcher.json'
 SETTINGS_FILE = USER_DIR / 'settings.ini'
 PS4_DIR = USER_DIR / 'ps4'
 LOGS_DIR = USER_DIR / 'logs'
 UPDATE_DIR = USER_DIR / 'update'
 # FSR 4 shaders, downloaded by the launcher (kzsf_fsr4.py); the game reads GOW3_FSR4_DIR.
-FSR4_DIR = PORT_DIR / 'fsr4_shaders'
+# In the AppImage the port folder is read-only: the shaders go in the writable data folder.
+FSR4_DIR = (PORT_DIR if WINDOWS else USER_DIR) / 'fsr4_shaders'
 KEEP_LOGS = 10
 NO_WINDOW = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
 
@@ -78,7 +87,7 @@ DONATE_URL = 'https://www.paypal.com/paypalme/SantiagoLescano577'
 DISCORD_BG = '#5865f2'    # Discord blurple
 DISCORD_HOVER = '#7983f5'
 DISCORD_URL = 'https://discord.gg/UYFcV5rbDw'
-UI_FONT = 'Segoe UI'
+UI_FONT = 'Segoe UI' if WINDOWS else 'DejaVu Sans'
 
 
 # ---------------------------------------------------------------------------------------------
@@ -519,6 +528,11 @@ TEXTS = {
         'discord_join': 'Ports Discord',
     },
 }
+if LINUX:
+    TEXTS['es']['footer_hint'] = 'Port nativo para Linux · usá tu propio dump'
+    TEXTS['en']['footer_hint'] = 'Native Linux port · uses your own dump'
+    TEXTS['es']['game_language_auto'] = 'Automático (el idioma del sistema si el juego lo trae)'
+    TEXTS['en']['game_language_auto'] = "Automatic (the system language when the game has it)"
 LANG = 'es'
 
 
@@ -672,9 +686,22 @@ def game_languages(game_dir, update_dir=''):
     return [entry for entry in GAME_LANGUAGES if entry[0] in found]
 
 
+# The primary-language ids GAME_LANGUAGES lists, for the Linux locale (LANG/LC_MESSAGES).
+_LOCALE_LANGUAGES = {'en': 0x09, 'fr': 0x0c, 'es': 0x0a, 'de': 0x07, 'it': 0x10, 'nl': 0x13,
+                     'pt': 0x16, 'ru': 0x19, 'ko': 0x12, 'ja': 0x11, 'fi': 0x0b, 'sv': 0x1d,
+                     'da': 0x06, 'nb': 0x14, 'no': 0x14, 'pl': 0x15, 'tr': 0x1f, 'ar': 0x01}
+
+
+def system_language_id():
+    """The primary-language id of the desktop's locale, or 0 when it is not one of the game's."""
+    locale = (os.environ.get('LC_ALL') or os.environ.get('LC_MESSAGES') or os.environ.get('LANG') or '')
+    code = locale.split('.')[0].split('@')[0].split('_')[0].lower()
+    return _LOCALE_LANGUAGES.get(code, 0)
+
+
 def game_language_id(settings):
-    """The PS4 language id for settings['game_language'] ('auto': Windows' language when the dump has
-    it, else English, else the first one it has)."""
+    """The PS4 language id for settings['game_language'] ('auto': the system's language when the dump
+    has it, else English, else the first one it has)."""
     available = game_languages(settings.get('game_dir'), settings.get('update_dir'))
     if not available:
         return 1
@@ -688,6 +715,8 @@ def game_language_id(settings):
             primary = ctypes.windll.kernel32.GetUserDefaultUILanguage() & 0x3ff
         except (AttributeError, OSError):
             pass
+    else:
+        primary = system_language_id()
     for folder, ident, _, windows in available:
         if windows == primary:
             return ident
@@ -1107,6 +1136,9 @@ def game_env(settings, graphics, needs_update):
         'GOW3_SAVEDATA_ID': TITLE_ID,
         'GOW3_LANGUAGE': os.environ.get('GOW3_LANGUAGE', str(game_language_id(settings))),
     })
+    if not WINDOWS:
+        # The AppImage's desktop entry and the game window use the same application id.
+        env.setdefault('SDL_APP_ID', 'killzone-shadowfall')
     # Upscaling method (any saved value but 'patch'): above 1080p the game stays at 1080p (run.py
     # drops the patch) and FSR 3.1 reaches the output, with the UI and videos drawn at that size.
     # No host scene proxies (their round trips broke foliage lighting). The port jitters the scene
@@ -1250,8 +1282,12 @@ class Launcher:
         self.scale = max(1.0, root.winfo_fpixels('1i') / 96.0)
         root.title('Killzone Shadow Fall')
         root.configure(bg=BG)
-        root.minsize(self.px(900), self.px(780))
-        root.geometry(f'{self.px(980)}x{self.px(840)}')
+        # The Windows window is 980x840. Steam Deck and small laptops are shorter: fit the screen
+        # instead of opening below the taskbar, and let each page scroll (show_tab).
+        width = min(self.px(980), max(self.px(900), root.winfo_screenwidth() - self.px(48)))
+        height = min(self.px(840), max(self.px(700), root.winfo_screenheight() - self.px(80)))
+        root.minsize(min(self.px(900), width), min(self.px(780), height))
+        root.geometry(f'{width}x{height}')
         self.style()
         self.build()
         root.protocol('WM_DELETE_WINDOW', self.close)
@@ -1391,12 +1427,25 @@ class Launcher:
                 bar.pack(side='right', fill='y', before=canvas)
 
         def wheel(event):
-            if not fits():
-                canvas.yview_scroll(int(-event.delta / 120) or (-1 if event.delta > 0 else 1), 'units')
+            if fits():
+                return
+            if getattr(event, 'num', None) in (4, 5):  # X11: the wheel is Button-4 / Button-5
+                canvas.yview_scroll(-1 if event.num == 4 else 1, 'units')
+                return
+            delta = getattr(event, 'delta', 0)
+            canvas.yview_scroll(int(-delta / 120) or (-1 if delta > 0 else 1), 'units')
+
+        def bind_wheel(_event=None):
+            for sequence in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
+                canvas.bind_all(sequence, wheel)
+
+        def unbind_wheel(_event=None):
+            for sequence in ('<MouseWheel>', '<Button-4>', '<Button-5>'):
+                canvas.unbind_all(sequence)
         holder.bind('<Configure>', layout)
         canvas.bind('<Configure>', layout)
-        canvas.bind('<Enter>', lambda _e: canvas.bind_all('<MouseWheel>', wheel))
-        canvas.bind('<Leave>', lambda _e: canvas.unbind_all('<MouseWheel>'))
+        canvas.bind('<Enter>', bind_wheel)
+        canvas.bind('<Leave>', unbind_wheel)
         dict((k, f) for k, _, f in self.tabs)[key](frame)
 
     def set_language(self, code):
@@ -1948,6 +1997,8 @@ class Launcher:
         if self.capturing:
             self.root.bind('<ButtonPress>', lambda e: self.assign_key(TK_MOUSE.get(e.num)))
             self.root.bind('<MouseWheel>', lambda e: self.assign_key('Wheel Up' if e.delta > 0 else 'Wheel Down'))
+            self.root.bind('<Button-4>', lambda e: self.assign_key('Wheel Up'))
+            self.root.bind('<Button-5>', lambda e: self.assign_key('Wheel Down'))
 
     def cancel_capture(self):
         name = self.capturing
@@ -1955,6 +2006,8 @@ class Launcher:
         self.root.unbind('<KeyPress>')
         self.root.unbind('<ButtonPress>')
         self.root.unbind('<MouseWheel>')
+        self.root.unbind('<Button-4>')
+        self.root.unbind('<Button-5>')
         if name and name in self.key_labels and self.key_labels[name].winfo_exists():
             default = next(key for n, _, key, _ in BUTTONS if n == name)
             self.key_labels[name].configure(text=self.settings['key_map'].get(name, default), fg=TEXT,
@@ -2352,10 +2405,15 @@ class Launcher:
             try:
                 archive = kzsf_update.download(release, UPDATE_DIR, progress)
                 self.root.after(0, lambda: self.status.configure(text=tr('update_unpacking'), fg=ACCENT))
-                unpacked = UPDATE_DIR / 'new'
-                source = kzsf_update.extract(archive, unpacked, Path(sys.executable).name)
-                script = kzsf_update.install_script(source, PORT_DIR, os.getpid(), Path(sys.executable).name,
-                                                    UPDATE_DIR, cleanup=(unpacked, archive))
+                if LINUX:
+                    # The AppImage replaces itself once the launcher has exited; data stays put.
+                    script = kzsf_update.install_script_linux(Path(os.environ.get('APPIMAGE') or sys.executable),
+                                                              os.getpid(), UPDATE_DIR, cleanup=(archive,))
+                else:
+                    unpacked = UPDATE_DIR / 'new'
+                    source = kzsf_update.extract(archive, unpacked, Path(sys.executable).name)
+                    script = kzsf_update.install_script(source, PORT_DIR, os.getpid(), Path(sys.executable).name,
+                                                        UPDATE_DIR, cleanup=(unpacked, archive))
                 kzsf_update.run_script(script)
             except (OSError, ValueError, zipfile.BadZipFile) as e:
                 self.root.after(0, lambda e=e: self.update_failed(e))
@@ -2425,18 +2483,26 @@ class Launcher:
             open_folder(run_dir)
 
     def set_window_icon(self):
-        """The game's icon (sce_sys/icon0.png) on the launcher window, when Pillow can read it."""
+        """The game's icon (sce_sys/icon0.png), else the port's, on the launcher window."""
         game = self.settings.get('game_dir')
-        if not game:
+        candidates = [Path(game) / 'sce_sys' / 'icon0.png'] if game else []
+        candidates += [PORT_DIR / 'launcher' / 'kzsf.png', PORT_DIR / 'launcher' / 'gow3.png']
+        source = next((path for path in candidates if path.is_file()), None)
+        if source is None:
             return
         try:
             from PIL import Image, ImageTk
-            with Image.open(Path(game) / 'sce_sys' / 'icon0.png') as source:
-                icon = ImageTk.PhotoImage(source.convert('RGB').resize((64, 64), Image.LANCZOS))
+            with Image.open(source) as image:
+                icon = ImageTk.PhotoImage(image.convert('RGB').resize((64, 64), Image.LANCZOS))
             self.root.iconphoto(True, icon)
             self.images['icon'] = icon
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception:  # noqa: BLE001  (Pillow missing: Tk's own PNG loader still works)
+            try:
+                icon = self.tk.PhotoImage(file=str(source))
+                self.root.iconphoto(True, icon)
+                self.images['icon'] = icon
+            except Exception:  # noqa: BLE001
+                pass
 
     def close(self):
         self.root.destroy()
@@ -2471,6 +2537,19 @@ def main():
     args = sys.argv[1:]
     if args and args[0] in ('--run', '--script'):
         sys.exit(run_role(args))
+    if args and args[0] in ('--version', '-version', '/version'):
+        print(VERSION)
+        return
+    if args and args[0] in ('--help', '-h', '/?', '--usage'):
+        print(f'Killzone Shadow Fall (PC port) {VERSION}\n'
+              f'usage: {"Killzone Shadow Fall" if FROZEN else sys.argv[0]} [--play] [--version] [--help]\n\n'
+              '  --play     Start the game with the saved options, without the launcher.\n'
+              '  --version  Print the launcher version.\n'
+              '  --help     Show this text.\n\n'
+              f'Data folder: {USER_DIR}\n'
+              'Environment: KZSF_USER_DIR (data folder), KZSF_DATA_DIR (AppImage data), '
+              'KZSF_PORTABLE=1 (data beside the AppImage).')
+        return
     settings = load_launcher()
     LANG = settings.get('language') or windows_language()
     if args and args[0] in ('--play', '-play', '/play'):
@@ -2499,8 +2578,9 @@ def main():
     import tkinter as tk
     from tkinter import filedialog, messagebox, ttk
     root = tk.Tk()
+    root.option_add('*tearOff', False)
     icon = PORT_DIR / 'launcher' / 'kzsf.ico'
-    if icon.is_file():
+    if WINDOWS and icon.is_file():
         try:
             root.iconbitmap(default=str(icon))
         except tk.TclError:

@@ -270,9 +270,12 @@ def main():
         # an application id the desktop entry matches, so the shell shows the same icon.
         icon_file = game / 'sce_sys' / 'icon0.png'
         if not WINDOWS:
-            env.setdefault('SDL_APP_ID', 'gow3')
-            if (PORT / 'launcher' / 'gow3.png').is_file():
-                icon_file = PORT / 'launcher' / 'gow3.png'
+            killzone = (PORT / 'patches' / 'Killzone_Shadow_Fall.xml').is_file()
+            env.setdefault('SDL_APP_ID', 'killzone-shadowfall' if killzone else 'gow3')
+            for name in ('kzsf.png', 'gow3.png'):
+                if (PORT / 'launcher' / name).is_file():
+                    icon_file = PORT / 'launcher' / name
+                    break
         try:
             from PIL import Image
             with Image.open(icon_file) as icon:

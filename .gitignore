@@ -1,6 +1,7 @@
 out/
 __pycache__/
 user/
+/data/
 *.mp4
 gow3.ini
 fsr4_shaders/
@@ -23,6 +24,7 @@ perf.data
 mods.json
 patches.json
 !launcher/gow3.png
+!launcher/kzsf.png
 # Killzone Shadow Fall port: local build logs, the frozen play copy, and the icon made from the
 # player's own dump (packaging/windows/make_kzsf_icon.py)
 out_build.log

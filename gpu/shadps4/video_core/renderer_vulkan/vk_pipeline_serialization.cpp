@@ -15,9 +15,9 @@
 #include <map>
 #ifdef _WIN32
 #include <windows.h>
-#include <psapi.h>
 #endif
 #include "shader_recompiler/recompiler_toggles.h"
+#include "gow3_process_memory.h"
 #include "common/serdes.h"
 #include "common/scope_exit.h"
 #include "video_core/renderer_vulkan/vk_pipeline_serialization.h"
@@ -1084,13 +1084,12 @@ void PipelineCache::WarmUp(const std::function<void(u32, u32, const char*)>& pro
     }
     // gow3: peak memory of the whole process (runtime and driver included), to judge whether
     // GOW3_PRECOMPILE fits on smaller PCs.
-    PROCESS_MEMORY_COUNTERS memory{.cb = sizeof(memory)};
-    K32GetProcessMemoryInfo(GetCurrentProcess(), &memory, sizeof(memory));
+    const std::uint64_t peak_memory = Gow3ProcessMemory::PeakRssBytes();
     std::printf("Pipeline warm-up: %u of %u pipelines in %.2f s (%u threads), peak process memory "
                 "%.0f MiB\n",
                 num_pipelines, num_total_pipelines,
                 std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count(),
-                warmup_threads, memory.PeakWorkingSetSize / 1048576.0);
+                warmup_threads, double(peak_memory) / 1048576.0);
     LOG_INFO(Render, "Preloaded {} pipelines", num_pipelines);
     ReportPipelineBinaryCache();
     if (num_total_pipelines > num_pipelines) {

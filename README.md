@@ -13,7 +13,7 @@
 > ❤️ The ports are and will stay **free**. If you want to help, a PayPal donation is welcome but
 > completely optional.
 
-Native Windows port of **Killzone Shadow Fall** (PS4). The game's code runs directly on your CPU;
+Native Windows and Linux port of **Killzone Shadow Fall** (PS4). The game's code runs directly on your CPU;
 graphics are translated to Vulkan in real time. **Public beta:** the whole campaign is playable,
 and it keeps improving with every report.
 
@@ -34,9 +34,14 @@ and it keeps improving with every report.
 2. Open **Killzone Shadow Fall.exe**, choose your dump's folder (the one holding `eboot.bin`).
 3. Press **PLAY**. The launcher updates itself when a new version comes out, keeping your saves.
 
+**Linux:** download `KillzoneShadowFall-v<version>-x86_64.AppImage` from the same release,
+`chmod +x` it and run it. It opens the same launcher natively, without Wine or Proton (see
+[Linux and Steam Deck](#-linux-and-steam-deck-appimage)).
+
 | | Minimum / recommended |
 |---|---|
 | 🪟 System | Windows 10 (1903+) or 11, 64-bit |
+| 🐧 Linux | x86_64, Vulkan 1.3, glibc 2.39+ (AppImage) |
 | 🎮 GPU | Vulkan 1.3 · **4-6 GB VRAM** for 1080p-1440p, **8 GB** for 1800p and 4K |
 | 🧠 RAM | 16 GB |
 | ✅ Tested on | Ryzen 7 5700 + RTX 2060 Super (8 GB): playable from start to finish |
@@ -329,14 +334,35 @@ keyboard, mouse and controller mapping · FOV · quick links to saves, screensho
 - **Version 01.81 is required** in every region (base game or its update).
 - Saves are shared between regions: switching keeps them. No folder renaming or `param.sfo` edits.
 
-## 🐧 Linux and Steam Deck (Proton, not tested by us)
+## 🐧 Linux and Steam Deck (AppImage)
 
-1. Add **Killzone Shadow Fall.exe** to Steam as a *non-Steam game*.
-2. *Properties → Compatibility*: force Proton Experimental or GE-Proton.
-3. Start it from Steam, choose your dump's folder and press **PLAY**.
+Download `KillzoneShadowFall-v<version>-x86_64.AppImage` from **[Releases](../../releases/latest)**:
 
-Reports (distro or Steam Deck, Proton version, GPU) are welcome on Discord or in
-[issues](../../issues). A native Linux version (AppImage) will come once the game is fully stable.
+```bash
+chmod +x KillzoneShadowFall-v<version>-x86_64.AppImage
+./KillzoneShadowFall-v<version>-x86_64.AppImage
+```
+
+It opens the same launcher as Windows, with the Game, Graphics, Controls, Cheats, Multiplayer and
+Advanced pages. PLAY prepares the dump and starts the game natively on x86_64; there is no Wine,
+Proton or emulator layer.
+
+- **Data:** settings, prepared files, saves, logs, mods and FSR 4 shaders go in a `data/` folder
+  beside the AppImage when that folder is writable, otherwise in
+  `~/.local/share/killzone-shadowfall`. Set `KZSF_DATA_DIR` to choose another folder, or
+  `KZSF_PORTABLE=1` to force the portable layout. The game folders are only read.
+- **Steam Deck:** add the AppImage as a non-Steam game. It works in Gaming Mode; Desktop Mode can
+  open the launcher too. The launcher fits 800p and scrolls its longer pages.
+- **Requirements:** x86_64 Linux with a Vulkan 1.3 driver (Mesa RADV/ANV or NVIDIA proprietary).
+  The AppImage targets glibc 2.39+: SteamOS 3.7, Bazzite/Fedora 42, Debian 13, Ubuntu 24.04 or
+  newer. Without libfuse2, run it with `--appimage-extract-and-run`. Hosting a multiplayer room
+  also needs `openssl` in `PATH` (it is part of the usual distributions); joining does not.
+- **Updates:** the launcher checks releases for a Linux AppImage, downloads it and replaces the
+  AppImage after closing; the data folder is untouched.
+
+The Windows build still runs under Proton if you need it, but the native AppImage is the
+recommended path on Linux. Reports (distro, GPU, driver) are welcome on Discord or in
+[issues](../../issues).
 
 ## ⚠️ Known issues
 
@@ -367,9 +393,10 @@ Reports (distro or Steam Deck, Proton version, GPU) are welcome on Discord or in
 - 🌍 **More languages in the launcher.**
 - Something new only if it's important (tell us on Discord).
 
+**✅ Linux:** native x86_64 build and AppImage, with the same launcher and portable data.
+
 **Later**
 - In-game menu in Spanish.
-- Native Linux version (AppImage), with Steam Deck in mind, once the game is fully stable.
 
 ## 🐞 Reporting bugs
 
@@ -380,11 +407,31 @@ happened, where (chapter), your GPU, CPU and driver, and attach that session's f
 
 ## 🛠️ Building from source
 
+### Windows
 As in the gow3_pc base ([instructions](packaging/windows/README.md)): MSYS2 CLANG64,
 `bash build.sh`, then `bash packaging/windows/package_kzsf.sh` for the zip (first,
 `packaging/windows/make_kzsf_icon.py <your dump>/sce_sys/icon0.png launcher/kzsf.ico`). For DLSS,
 build the bridge first with Visual Studio 2022 and the [NVIDIA DLSS SDK](https://github.com/NVIDIA/DLSS):
 `DLSS_SDK_ROOT=<checkout> bash packaging/windows/build_dlss_kzsf.sh`.
+
+### Linux (x86_64, Ubuntu 24.04 or newer)
+
+```bash
+git submodule update --init --recursive
+bash packaging/linux/ci-deps.sh   # toolchain, Vulkan/SDL3/FFmpeg, PyInstaller, spirv-cross
+bash build.sh                     # out/gow3-probe and out/gpu/libgow3gpu.so
+bash packaging/linux/build-kzsf.sh  # dist/KillzoneShadowFall-v<version>-x86_64.AppImage
+```
+
+The engine targets keep their `gow3-*` names from the gow3_pc base; the player-facing executable
+in the AppImage is `KillzoneShadowFall`, and the launcher is the Killzone one.
+
+The launcher is the same cross-platform Python/Tk one as on Windows, frozen with PyInstaller; the
+AppImage bundles SDL3, FFmpeg, Zydis and the other non-system libraries. The workflow is
+**Actions → Killzone Shadow Fall Linux AppImage**; the player-facing notes are in
+[packaging/linux/kzsf/README.txt](packaging/linux/kzsf/README.txt). The older
+[linux-appimage.yml](.github/workflows/linux-appimage.yml) is the inherited God of War III base
+project workflow: it builds `gow3_launcher_win.py`, not this launcher.
 
 ---
 
@@ -402,7 +449,7 @@ build the bridge first with Visual Studio 2022 and the [NVIDIA DLSS SDK](https:/
 > ❤️ Los ports son y seguirán siendo **gratuitos**. Si querés ayudar, una donación por PayPal se
 > agradece, pero es totalmente opcional.
 
-Port nativo para Windows de **Killzone Shadow Fall** (PS4). El código del juego corre directamente
+Port nativo para Windows y Linux de **Killzone Shadow Fall** (PS4). El código del juego corre directamente
 en tu CPU; los gráficos se traducen a Vulkan en tiempo real. **Beta pública:** se puede jugar la
 campaña completa, y mejora con cada reporte.
 
@@ -424,9 +471,14 @@ campaña completa, y mejora con cada reporte.
 3. Dale a **JUGAR**. El launcher se actualiza solo cuando sale una versión nueva, conservando tus
    partidas.
 
+**Linux:** bajá `KillzoneShadowFall-v<version>-x86_64.AppImage` de la misma versión, dale permiso
+de ejecución y abrila. Es el mismo launcher, nativo, sin Wine ni Proton (ver
+[Linux y Steam Deck](#-linux-y-steam-deck-appimage)).
+
 | | Mínimo / recomendado |
 |---|---|
 | 🪟 Sistema | Windows 10 (1903+) u 11 de 64 bits |
+| 🐧 Linux | x86_64, Vulkan 1.3, glibc 2.39+ (AppImage) |
 | 🎮 GPU | Vulkan 1.3 · **4-6 GB de VRAM** para 1080p-1440p, **8 GB** para 1800p y 4K |
 | 🧠 RAM | 16 GB |
 | ✅ Probado en | Ryzen 7 5700 + RTX 2060 Super (8 GB): se juega completo de principio a fin |
@@ -725,15 +777,35 @@ partidas, capturas y logs.
 - **Es obligatoria la versión 01.81** en cualquier región (juego base o su actualización).
 - Las partidas se comparten entre regiones. No hace falta renombrar carpetas ni editar `param.sfo`.
 
-## 🐧 Linux y Steam Deck (Proton, no probado por nosotros)
+## 🐧 Linux y Steam Deck (AppImage)
 
-1. Agregá **Killzone Shadow Fall.exe** a Steam como *juego que no es de Steam*.
-2. *Propiedades → Compatibilidad*: forzá Proton Experimental o GE-Proton.
-3. Abrilo desde Steam, elegí la carpeta de tu dump y dale a **JUGAR**.
+Bajá `KillzoneShadowFall-v<version>-x86_64.AppImage` de **[Releases](../../releases/latest)**:
 
-Se agradecen reportes (distro o Steam Deck, versión de Proton, GPU) en el Discord o en
-[issues](../../issues). Cuando el juego esté 100% estable va a salir una versión nativa para
-Linux (AppImage).
+```bash
+chmod +x KillzoneShadowFall-v<version>-x86_64.AppImage
+./KillzoneShadowFall-v<version>-x86_64.AppImage
+```
+
+Abre el mismo launcher que Windows, con las páginas Juego, Gráficos, Controles, Trucos,
+Multijugador y Avanzado. JUGAR prepara el dump y arranca el juego nativo en x86_64; no hay Wine,
+Proton ni emulador.
+
+- **Datos:** los ajustes, archivos preparados, partidas, logs, mods y shaders de FSR 4 van a una
+  carpeta `data/` al lado del AppImage cuando esa carpeta se puede escribir; si no, a
+  `~/.local/share/killzone-shadowfall`. Con `KZSF_DATA_DIR` elegís otra carpeta, y con
+  `KZSF_PORTABLE=1` forzás el modo portable. Las carpetas del juego solo se leen.
+- **Steam Deck:** agregá el AppImage como juego que no es de Steam. Funciona en Gaming Mode;
+  en Desktop Mode también abre el launcher. La ventana entra en 800p y las páginas largas scrollean.
+- **Requisitos:** Linux x86_64 con driver Vulkan 1.3 (Mesa RADV/ANV o NVIDIA propietario). El
+  AppImage apunta a glibc 2.39+: SteamOS 3.7, Bazzite/Fedora 42, Debian 13, Ubuntu 24.04 o más
+  nuevo. Sin libfuse2, corrélo con `--appimage-extract-and-run`. Para crear una sala de
+  multijugador también hace falta `openssl` en el `PATH` (viene con las distros); unirse no.
+- **Actualizaciones:** el launcher busca versiones con AppImage para Linux, la baja y reemplaza el
+  AppImage al cerrar; la carpeta de datos no se toca.
+
+La versión de Windows sigue funcionando por Proton si la necesitás, pero en Linux lo recomendado
+es el AppImage nativo. Se agradecen reportes (distro, GPU, driver) en el Discord o en
+[issues](../../issues).
 
 ## ⚠️ Problemas conocidos
 
@@ -766,9 +838,10 @@ issues corregidos.
 - 🌍 **Más idiomas en el launcher.**
 - Algo nuevo solo si es importante (contanos en Discord).
 
+**✅ Linux:** build nativo x86_64 y AppImage, con el mismo launcher y datos portables.
+
 **Más adelante**
 - Menú dentro del juego en español.
-- Versión nativa para Linux (AppImage), pensando en Steam Deck, cuando el juego esté 100% estable.
 
 ## 🐞 Reportar errores
 
@@ -779,11 +852,31 @@ desactivado y decí si sigue pasando.
 
 ## 🛠️ Compilar desde el código
 
+### Windows
 Igual que la base gow3_pc ([instrucciones](packaging/windows/README.md)): MSYS2 CLANG64,
 `bash build.sh`, y después `bash packaging/windows/package_kzsf.sh` para el zip (antes,
 `packaging/windows/make_kzsf_icon.py <tu dump>/sce_sys/icon0.png launcher/kzsf.ico`). Para DLSS,
 compilá antes el puente con Visual Studio 2022 y el [SDK de NVIDIA DLSS](https://github.com/NVIDIA/DLSS):
 `DLSS_SDK_ROOT=<checkout> bash packaging/windows/build_dlss_kzsf.sh`.
+
+### Linux (x86_64, Ubuntu 24.04 o más nuevo)
+
+```bash
+git submodule update --init --recursive
+bash packaging/linux/ci-deps.sh    # toolchain, Vulkan/SDL3/FFmpeg, PyInstaller, spirv-cross
+bash build.sh                      # out/gow3-probe y out/gpu/libgow3gpu.so
+bash packaging/linux/build-kzsf.sh  # dist/KillzoneShadowFall-v<version>-x86_64.AppImage
+```
+
+Los targets del motor conservan los nombres `gow3-*` de la base gow3_pc; el ejecutable para el
+jugador dentro del AppImage es `KillzoneShadowFall`, y el launcher es el de Killzone.
+
+El launcher es el mismo Python/Tk multiplataforma que en Windows, congelado con PyInstaller; el
+AppImage incluye SDL3, FFmpeg, Zydis y las demás librerías que no son del sistema. El workflow es
+**Actions → Killzone Shadow Fall Linux AppImage**; las notas para jugadores están en
+[packaging/linux/kzsf/README.txt](packaging/linux/kzsf/README.txt). El
+[linux-appimage.yml](.github/workflows/linux-appimage.yml) viejo es el workflow heredado del
+proyecto base God of War III: arma `gow3_launcher_win.py`, no este launcher.
 
 ---
 

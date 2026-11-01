@@ -14,8 +14,9 @@ EXE = 'Killzone Shadow Fall.exe'
 
 
 def release(tag, asset=True, draft=False):
-    assets = [{'name': f'KillzoneShadowFall-{tag}-windows.zip', 'browser_download_url': f'https://x/{tag}.zip',
-               'size': 10}] if asset else []
+    suffix = 'windows.zip' if u.WINDOWS else 'x86_64.AppImage'
+    assets = [{'name': f'KillzoneShadowFall-{tag}-{suffix}',
+               'browser_download_url': f'https://x/{tag}.{suffix}', 'size': 10}] if asset else []
     return {'tag_name': tag, 'draft': draft, 'html_url': f'https://x/{tag}', 'body': 'notes', 'assets': assets}
 
 
@@ -25,11 +26,11 @@ class UpdateTests(unittest.TestCase):
         self.assertEqual(u.parse_version('0.2'), (0, 2, 0))
         self.assertIsNone(u.parse_version('nightly'))
 
-    def test_newest_release_skips_drafts_and_releases_without_zip(self):
+    def test_newest_release_skips_drafts_and_releases_without_asset(self):
         best = u.newest_release([release('v0.1.1'), release('v0.3.0', draft=True), release('v0.2.5', asset=False),
                                  release('v0.2.0')])
         self.assertEqual(best['version'], '0.2.0')
-        self.assertEqual(best['url'], 'https://x/v0.2.0.zip')
+        self.assertEqual(best['url'], release('v0.2.0')['assets'][0]['browser_download_url'])
 
     def test_unsafe_zip_is_rejected(self):
         with tempfile.TemporaryDirectory() as d:
