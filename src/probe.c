@@ -359,6 +359,31 @@ static uint64_t patch_tcb_loads(const Segment *segments, uint64_t count) {
 /* ucontext gregs of IsaRegs.gpr (x86 numbering). */
 static const int isa_gregs[16]={REG_RAX,REG_RCX,REG_RDX,REG_RBX,REG_RSP,REG_RBP,REG_RSI,REG_RDI,
                                 REG_R8,REG_R9,REG_R10,REG_R11,REG_R12,REG_R13,REG_R14,REG_R15};
+static void write_all(int fd, const char *data, size_t size) {
+    while (size) {
+        ssize_t n = write(fd, data, size);
+        if (n <= 0) return;
+        data += n;
+        size -= (size_t)n;
+    }
+}
+/* Killzone's fatal error handler (image+0x3277d0) formats its message into [rbp-0x1000]
+ * and ends in ud2 at +0x3278a0: read and print the game's own reason. The read goes
+ * through process_vm_readv so a wild rbp cannot fault the handler again. */
+static void print_game_fatal(ucontext_t *uc) {
+    uintptr_t rip = (uintptr_t)uc->uc_mcontext.gregs[REG_RIP];
+    if (!image || rip != (uintptr_t)image + 0x3278a0 ||
+        memcmp(image + 0x32789b, "\xe8\x10\xf9\xff\xff\x0f\x0b", 7)) return;
+    char message[4097];
+    struct iovec local = { message, sizeof(message) - 1 };
+    struct iovec remote = { (void *)((uintptr_t)uc->uc_mcontext.gregs[REG_RBP] - 0x1000), sizeof(message) - 1 };
+    ssize_t got = process_vm_readv(getpid(), &local, 1, &remote, 1, 0);
+    if (got <= 0) return;
+    message[got] = 0;
+    write_all(2, "Game fatal error: ", 18);
+    write_all(2, message, strnlen(message, (size_t)got));
+    write_all(2, "\n", 1);
+}
 static void fault(int sig, siginfo_t *info, void *context) {
     if (sig == SIGTRAP && isa_table) {
         /* An int3 ISA site (RIP is past the CC byte); any other trap ends in the report below. */
@@ -405,6 +430,15 @@ static void fault(int sig, siginfo_t *info, void *context) {
     else
         snprintf(line, sizeof(line), "Fault (signal %d) at RIP %p, address %p\n", sig, (void *)rip, info->si_addr);
     { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
+    snprintf(line, sizeof(line),
+             "  rax=%016llx rbx=%016llx rcx=%016llx rdx=%016llx\n"
+             "  rsi=%016llx rdi=%016llx rbp=%016llx rsp=%016llx\n",
+             (unsigned long long)uc->uc_mcontext.gregs[REG_RAX], (unsigned long long)uc->uc_mcontext.gregs[REG_RBX],
+             (unsigned long long)uc->uc_mcontext.gregs[REG_RCX], (unsigned long long)uc->uc_mcontext.gregs[REG_RDX],
+             (unsigned long long)uc->uc_mcontext.gregs[REG_RSI], (unsigned long long)uc->uc_mcontext.gregs[REG_RDI],
+             (unsigned long long)uc->uc_mcontext.gregs[REG_RBP], (unsigned long long)uc->uc_mcontext.gregs[REG_RSP]);
+    { ssize_t written_=write(2, line, strlen(line)); (void)written_; }
+    print_game_fatal(uc);
     if (gpu_enabled) gow3gpu_dump_guest_writes(context);
     /* Host call chain (frames with unwind info; guest frames end it). */
     void *frames[32];
@@ -416,6 +450,21 @@ static void fault(int sig, siginfo_t *info, void *context) {
         else
             snprintf(line, sizeof(line), "  #%d %p\n", i, frames[i]);
         ssize_t written_=write(2, line, strlen(line)); (void)written_;
+    }
+    /* Guest callers: backtrace() stops at the signal trampoline, so walk the rbp chain
+     * (guest code keeps frame pointers). Reads use process_vm_readv for the same reason. */
+    uintptr_t rbp = (uintptr_t)uc->uc_mcontext.gregs[REG_RBP];
+    for (int i = 0; i < 16 && rbp; ++i) {
+        uintptr_t frame[2];
+        struct iovec local = { frame, sizeof(frame) }, remote = { (void *)rbp, sizeof(frame) };
+        if (process_vm_readv(getpid(), &local, 1, &remote, 1, 0) != (ssize_t)sizeof(frame)) break;
+        if (frame[0] <= rbp) break;
+        if (frame[1] - (uintptr_t)image < 0x10000000)
+            snprintf(line, sizeof(line), "  guest #%d 0x%lx\n", i, (unsigned long)(frame[1] - (uintptr_t)image));
+        else
+            snprintf(line, sizeof(line), "  guest #%d %p\n", i, (void *)frame[1]);
+        ssize_t written_=write(2, line, strlen(line)); (void)written_;
+        rbp = frame[0];
     }
     if (isa_table) { isa_rewrite_report(isa_table, stderr); fflush(stderr); }
     _exit(128 + sig);
